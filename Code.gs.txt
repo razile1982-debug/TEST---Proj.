@@ -1,0 +1,7 @@
+ function doGet() {
+  return HtmlService.createHtmlOutputFromFile('Index')
+    .setTitle('Daily Dashboard Monitoring')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+
+}
+

@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPRH Monitoring VISMIN</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+:root{
+    --primary:#2563eb;
+    --primary-light:#3b82f6;
+    --success:#16a34a;
+    --danger:#dc2626;
+    --bg:#f1f5f9;
+    --card:#ffffff;
+    --text:#1e293b;
+}
+
+*{
+    box-sizing:border-box;
+}
+
+body{
+    font-family:'Inter',sans-serif;
+    background:linear-gradient(135deg,#eef2ff,#f8fafc);
+    margin:0;
+    padding:30px 15px;
+    color:var(--text);
+}
+
+.container{
+    max-width:1200px;
+    margin:auto;
+}
+
+.header{
+    text-align:center;
+    margin-bottom:30px;
+}
+
+.header h2{
+    font-size:26px;
+    font-weight:700;
+    margin:0;
+    background:linear-gradient(90deg,var(--primary),var(--primary-light));
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+}
+
+.card{
+    background:var(--card);
+    border-radius:16px;
+    padding:25px;
+    margin-bottom:30px;
+    box-shadow:0 10px 25px rgba(0,0,0,0.06);
+    transition:0.3s ease;
+}
+
+.card:hover{
+    transform:translateY(-3px);
+    box-shadow:0 15px 30px rgba(0,0,0,0.08);
+}
+
+table{
+    width:100%;
+    border-collapse:collapse;
+    table-layout:fixed;
+}
+
+th{
+    background:linear-gradient(90deg,var(--primary),var(--primary-light));
+    color:white;
+    padding:12px;
+    font-weight:600;
+    font-size:14px;
+}
+
+td{
+    text-align:center;
+    padding:10px;
+    border-bottom:1px solid #e2e8f0;
+    font-size:14px;
+}
+
+tr:hover{
+    background:#f8fafc;
+}
+
+input{
+    width:70px;
+    padding:6px;
+    border-radius:8px;
+    border:1px solid #cbd5e1;
+    text-align:center;
+    transition:0.2s;
+}
+
+input:focus{
+    outline:none;
+    border-color:var(--primary);
+    box-shadow:0 0 0 3px rgba(37,99,235,0.15);
+}
+
+.avg-cell{
+    font-weight:600;
+    color:var(--primary);
+}
+
+.button-wrapper{
+    text-align:right;
+    margin-top:20px;
+    <button onclick="saveToGoogleSheet()">Save to Google Sheet</button>
+}
+
+button{
+    margin-left:10px;
+}
+
+button:hover{
+    transform:translateY(-2px);
+    box-shadow:0 8px 15px rgba(37,99,235,0.3);
+}
+
+.chart-title{
+    text-align:center;
+    font-size:16px;
+    font-weight:600;
+    margin-bottom:15px;
+}
+
+.chart-container{
+    position:relative;
+    height:380px;
+}
+
+@media(max-width:900px){
+    .header h2{font-size:22px;}
+    input{width:55px;}
+    .chart-container{height:320px;}
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="header">
+    <h2>SPRH Monitoring VISMIN</h2>
+    <div style="margin-top:15px;">
+        <label style="font-weight:500;margin-right:8px;">Select Date:</label>
+        <input type="date" id="monitoringDate" style="padding:6px 10px;border-radius:8px;border:1px solid #cbd5e1;">
+    </div>
+</div>
+
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>PNC %</th>
+                <th>MAA %</th>
+                <th>CGY %</th>
+                <th>Avg %</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+
+    <div class="button-wrapper">
+        <button onclick="extractCSV()">Extract Data (CSV)</button>
+        <button onclick="saveToGoogleSheet()">Save to Google Sheet</button>
+    </div>
+</div>
+
+
+
+<div class="card">
+    <div class="chart-title">SPRH Performance Trend</div>
+    <div class="chart-container">
+        <canvas id="trendChart"></canvas>
+    </div>
+</div>
+
+</div>
+
+<script>
+const startHour = 8;
+const endHour = 22;
+const target = 34;
+
+const tableBody = document.getElementById("tableBody");
+let labels = [];
+let avgData = [];
+
+for (let hour = startHour; hour <= endHour; hour++) {
+    const timeLabel = hour + ":00";
+    labels.push(timeLabel);
+    avgData.push(0);
+
+    const row = document.createElement("tr");
+    row.innerHTML = `
+        <td>${timeLabel}</td>
+        <td><input type="number" min="0" max="100" oninput="calculateRow(this)"></td>
+        <td><input type="number" min="0" max="100" oninput="calculateRow(this)"></td>
+        <td><input type="number" min="0" max="100" oninput="calculateRow(this)"></td>
+        <td class="avg-cell">0.00</td>
+    `;
+    tableBody.appendChild(row);
+}
+
+function calculateRow(input){
+    const row = input.closest("tr");
+    const inputs = row.querySelectorAll("input");
+    const avgCell = row.querySelector(".avg-cell");
+
+    let values = [];
+    inputs.forEach(i=>{
+        let val=parseFloat(i.value);
+        if(!isNaN(val)) values.push(val);
+    });
+
+    let avg = values.length ? values.reduce((a,b)=>a+b,0)/values.length : 0;
+    avgCell.innerText = avg.toFixed(2);
+
+    updateChart();
+    saveDataForDate(); // 🔥 AUTO SAVE
+}
+
+
+function updateChart(){
+    const rows = document.querySelectorAll("#tableBody tr");
+    avgData = [];
+
+    rows.forEach(row=>{
+        avgData.push(parseFloat(row.querySelector(".avg-cell").innerText));
+    });
+
+    chart.data.datasets[0].data = avgData;
+    chart.update();
+}
+
+const ctx = document.getElementById('trendChart').getContext('2d');
+
+const chart = new Chart(ctx,{
+    type:'line',
+    data:{
+        labels:labels,
+        datasets:[
+            {
+                label:'Average Performance',
+                data:avgData,
+                borderColor:'#16a34a',
+                backgroundColor:'rgba(22,163,74,0.15)',
+                fill:true,
+                tension:0.4,
+                pointRadius:5
+            },
+            {
+                label:'Target (34%)',
+                data:Array(labels.length).fill(target),
+                borderColor:'#dc2626',
+                borderDash:[6,6],
+                fill:false,
+                pointRadius:0
+            }
+        ]
+    },
+    options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        scales:{
+            y:{
+                min:0,
+                max:100,
+                ticks:{
+                    callback:(v)=>v+"%"
+                }
+            }
+        },
+        plugins:{
+            legend:{
+                labels:{
+                    font:{size:13}
+                }
+            }
+        }
+    }
+});
+
+function extractCSV(){
+
+    const selectedDate = document.getElementById("monitoringDate").value;
+
+    if(!selectedDate){
+        alert("Please select a date before extracting data.");
+        return;
+    }
+
+    let csv=[];
+    csv.push(["SPRH Monitoring VISMIN"].join(","));
+    csv.push(["Date:", selectedDate].join(","));
+    csv.push([""].join(","));
+    csv.push(["Time","PNC %","MAA %","CGY %","Avg %"].join(","));
+
+    const rows=document.querySelectorAll("#tableBody tr");
+
+    rows.forEach(row=>{
+        const time=row.children[0].innerText;
+        const inputs=row.querySelectorAll("input");
+        const avg=row.querySelector(".avg-cell").innerText;
+
+        let rowData=[
+            time,
+            inputs[0].value||0,
+            inputs[1].value||0,
+            inputs[2].value||0,
+            avg
+        ];
+        csv.push(rowData.join(","));
+    });
+
+    function saveToGoogleSheet(){
+
+    const selectedDate = dateInput.value;
+    if(!selectedDate){
+        alert("Please select a date.");
+        return;
+    }
+
+    const rows = document.querySelectorAll("#tableBody tr");
+
+    let dataToSend = {
+        date: selectedDate,
+        rows: []
+    };
+
+    rows.forEach(row=>{
+        const time = row.children[0].innerText;
+        const inputs = row.querySelectorAll("input");
+        const avg = row.querySelector(".avg-cell").innerText;
+
+        dataToSend.rows.push({
+            time: time,
+            pnc: inputs[0].value || "",
+            maa: inputs[1].value || "",
+            cgy: inputs[2].value || "",
+            avg: avg
+        });
+    });
+
+    fetch("https://script.google.com/macros/s/AKfycbwI0oGqg5DEbNA_lng3ceb3GkIIzEUOS_9utZOrWuxLzDgyyeA7PYPfb9XOi7ddCR8HFA/exec?date=2026-02-13
+", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(dataToSend)
+    })
+    .then(res => res.json())
+    .then(() => {
+        alert("Saved successfully!");
+    })
+    .catch(err=>{
+        console.error(err);
+        alert("Error saving data.");
+    });
+}
+
+
+    const csvContent="data:text/csv;charset=utf-8,"+csv.join("\n");
+    const encodedUri=encodeURI(csvContent);
+    const link=document.createElement("a");
+
+    link.setAttribute("href",encodedUri);
+    link.setAttribute("download","SPRH_Monitoring_VISMIN_"+selectedDate+".csv");
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// Auto set today's date
+document.getElementById("monitoringDate").valueAsDate = new Date();
+
+
+const dateInput = document.getElementById("monitoringDate");
+
+// Auto set today's date
+dateInput.valueAsDate = new Date();
+
+// When date changes → Load saved data
+dateInput.addEventListener("change", loadDataFromGoogleSheet);
+
+loadDataFromGoogleSheet();
+
+function saveDataForDate(){
+
+    const selectedDate = dateInput.value;
+    if(!selectedDate) return;
+
+    const rows = document.querySelectorAll("#tableBody tr");
+    let data = [];
+
+    rows.forEach(row=>{
+        const inputs = row.querySelectorAll("input");
+        data.push({
+            pnc: inputs[0].value || "",
+            maa: inputs[1].value || "",
+            cgy: inputs[2].value || ""
+        });
+    });
+
+    localStorage.setItem("SPRH_"+selectedDate, JSON.stringify(data));
+}
+
+
+function loadDataForDate(){
+
+    const selectedDate = dateInput.value;
+    if(!selectedDate) return;
+
+    const saved = localStorage.getItem("SPRH_"+selectedDate);
+
+    const rows = document.querySelectorAll("#tableBody tr");
+
+    if(saved){
+        const data = JSON.parse(saved);
+
+        rows.forEach((row,index)=>{
+            const inputs = row.querySelectorAll("input");
+
+            inputs[0].value = data[index]?.pnc || "";
+            inputs[1].value = data[index]?.maa || "";
+            inputs[2].value = data[index]?.cgy || "";
+
+            calculateRow(inputs[0]);
+        });
+
+    } else {
+        // Clear table if no saved data
+        rows.forEach(row=>{
+            const inputs = row.querySelectorAll("input");
+            inputs.forEach(input=> input.value="");
+            row.querySelector(".avg-cell").innerText = "0.00";
+        });
+
+        updateChart();
+    }
+}
+
+
+function loadDataFromGoogleSheet(){
+
+    const selectedDate = dateInput.value;
+    if(!selectedDate) return;
+
+    fetch("https://script.google.com/macros/s/AKfycbwI0oGqg5DEbNA_lng3ceb3GkIIzEUOS_9utZOrWuxLzDgyyeA7PYPfb9XOi7ddCR8HFA/exec?date=2026-02-13
+"+selectedDate)
+    .then(res => res.json())
+    .then(data => {
+
+        const rows = document.querySelectorAll("#tableBody tr");
+
+        rows.forEach(row=>{
+            const inputs = row.querySelectorAll("input");
+            inputs.forEach(input => input.value="");
+            row.querySelector(".avg-cell").innerText="0.00";
+        });
+
+        data.forEach((item,index)=>{
+            const row = rows[index];
+            if(!row) return;
+
+            const inputs = row.querySelectorAll("input");
+
+            inputs[0].value = item.pnc;
+            inputs[1].value = item.maa;
+            inputs[2].value = item.cgy;
+
+            calculateRow(inputs[0]);
+        });
+
+    })
+    .catch(err=>{
+        console.error("Load error:",err);
+    });
+}
+
+
+</script>
+
+</body>
+</html>
